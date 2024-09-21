@@ -76,12 +76,14 @@ class LinearRegression:
 		dataset = dataset.sample(frac=1, random_state=42).reset_index(drop=True)
 
 		# print dataset stats
-		print(dataset.describe())
+		print(dataset.describe(), '\n')
+		print("Data Types:\n", dataset.dtypes)
 		print()
 		# test the correlation on dataset. This generates a nxn matrix (where n is the number of features)
 		# and it gives a number in the range [-1, 1] (correlation coefficient) that tells statistically 
 		# how that feature is correlated to another. The elements on the diagonal of this matrix will be 1
-		print(dataset.corr())
+		numeric_dataset = dataset.select_dtypes(include=[np.number])
+		print(numeric_dataset.corr())
 		print()
 
 		# Extract from the dataset the features specified in self.features_select, put it into X and transform it into a numpy array
