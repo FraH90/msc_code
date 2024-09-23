@@ -26,12 +26,15 @@ def main():
     linear_regression.gd_contour_plot()
     linear_regression.learning_curves()
 
-
+    # Animate
+    linear_regression.animate()
+    
     # Evaluation
     evaluation = Evaluation(linear_regression)
     performance = evaluation.compute_performance(linear_regression.X_test, linear_regression.y_test)
     for key, value in performance.items():
         print(f"{key} = {value}")
+        
 
 
 if __name__ == "__main__":

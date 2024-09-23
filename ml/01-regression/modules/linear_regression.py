@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import matplotlib.animation as animation
 
 DEFAULT_LEARNING_RATE = 1e-2
 DEFAULT_N_STEPS = 2000
@@ -183,6 +184,7 @@ class LinearRegression:
 		# To obtain that equivalent of the scalar equation in the vector form, we just perform dot product of theta.T and theta, but the last theta 
 		# is multiplied element-wise (lmd_vector*theta) by the elements in lmd_vector, so we obtain that all the components squared of theta are summed up
 		# and multiplied by lmd, with the exception of the 0-th component that is excluded from this computation (since lmd_vector[0] is null)
+		# OSS: COST WILL BE HIGH IF Y IS HIGH, SINCE WE'VE NOT NORMALIZED THE LABELS Y
 		cost =   1/(2*m) * ( np.dot(error.T, error) +  np.dot(theta.T, self.lmd_vector*theta) )
 		return cost
 
@@ -358,17 +360,26 @@ class LinearRegression:
 		fig = plt.figure(figsize=(12, 8))
 		ax = fig.add_subplot(111, projection='3d')
 		
+		# Generate a vector whose elements span from theta0.min to theta0.max; same for theta1
 		theta0_range = np.linspace(self.theta_history[:, 0].min(), self.theta_history[:, 0].max(), 100)
 		theta1_range = np.linspace(self.theta_history[:, 1].min(), self.theta_history[:, 1].max(), 100)
+		# With the datapoints above for theta0, theta1, generate a mesh grid. This is the standard technique in numpy to evaluate scalar or vector fields.
 		theta0_mesh, theta1_mesh = np.meshgrid(theta0_range, theta1_range)
 		
+		# Zero-fill the matrix where we'll put the J(theta0, theta1) values
 		J_vals = np.zeros(theta0_mesh.shape)
+		# i, j here are integers. theta0_mesh.shape[0] is the length of the 
 		for i in range(theta0_mesh.shape[0]):
 			for j in range(theta0_mesh.shape[1]):
+				# build the theta=(theta0, theta1) vector across the meshgrid
 				theta = np.array([theta0_mesh[i, j], theta1_mesh[i, j]])
+				# Compute the values of J(theta) in the given theta point, that will correspond to (i,j)
+				# So there's a mapping (i, j) -> (theta0, theta1)
 				J_vals[i, j] = self.cost(self.X_train, self.y_train, theta)
 		
+		# Plot the surface of J(theta)
 		surf = ax.plot_surface(theta0_mesh, theta1_mesh, J_vals, cmap=cm.coolwarm, alpha=0.6)
+		# Plot the path in the (theta0, theta1, J(theta)) space taken by the gradient descent algorithm
 		ax.plot(self.theta_history[:, 0], self.theta_history[:, 1], self.cost_history, 'r-', label='Gradient descent path')
 		
 		ax.set_xlabel('Theta0')
@@ -388,8 +399,11 @@ class LinearRegression:
 			print("Contour plot only available for single feature")
 			return
 		# Grid over which we will calculate J
-		theta0_vals = np.linspace(-2, 2, 100)
-		theta1_vals = np.linspace(-2, 3, 100)
+		extension_factor = 3.2
+		theta0_maxplot = extension_factor * max( abs(self.theta_history[:, 0].min()), abs(self.theta_history[:, 0].max()) )
+		theta1_maxplot = max( abs(self.theta_history[:, 1].min()), abs(self.theta_history[:, 1].max()) )
+		theta0_vals = np.linspace(-theta0_maxplot, theta0_maxplot, 100)
+		theta1_vals = np.linspace(-theta0_maxplot, theta0_maxplot, 100)
 
 		# initialize J_vals to a matrix of 0's. Notice how we're passing a tuple to np.zeros, which contain the size (shape) of the zero-array we want to create
 		J_values = np.zeros((theta0_vals.size, theta1_vals.size))
@@ -457,3 +471,80 @@ class LinearRegression:
 		plt.title('Learning curves')
 		ax.legend()
 		plt.show()
+
+
+	def animate(self):
+		# Prepare the figure and subplots
+		fig = plt.figure(figsize=(12, 5))
+
+		# First subplot: regression line over training data
+		ax1 = fig.add_subplot(121)
+		ax1.plot(self.X_train[:, 1], self.y_train, 'ro', label='Training data')
+		ax1.set_title('Housing Price Prediction')
+		ax1.set_xlabel("Size of house in ft^2 (X1)")
+		ax1.set_ylabel("Price in $1000s (Y)")
+		ax1.grid(axis='both')
+		ax1.legend(loc='lower right')
+
+		line, = ax1.plot([], [], 'b-', label='Current Hypothesis')
+		annotation = ax1.text(-2, 3, '', fontsize=20, color='green')
+		annotation.set_animated(True)
+
+		# Second subplot: contour plot of cost function
+		ax2 = fig.add_subplot(122)
+		
+		# Generate contour plot for the cost function
+		theta0_vals = np.linspace(self.theta_history[:, 0].min(), self.theta_history[:, 0].max(), 100)
+		theta1_vals = np.linspace(self.theta_history[:, 1].min(), self.theta_history[:, 1].max(), 100)
+		J_vals = np.zeros((theta0_vals.size, theta1_vals.size))
+		for t1, element in enumerate(theta0_vals):
+			for t2, element2 in enumerate(theta1_vals):
+				thetaT = np.array([element, element2])
+				J_vals[t1, t2] = self.cost(self.X_train, self.y_train, thetaT)
+		J_vals = J_vals.T
+		A, B = np.meshgrid(theta0_vals, theta1_vals)
+		C = J_vals
+		cp = ax2.contourf(A, B, C)
+		plt.colorbar(cp, ax=ax2)
+		ax2.set_title('Filled Contours Plot')
+		ax2.set_xlabel('theta 0')
+		ax2.set_ylabel('theta 1')
+
+		track, = ax2.plot([], [], 'r-')
+		point, = ax2.plot([], [], 'ro')
+
+		# Initialize the plot elements
+		def init():
+			line.set_data([], [])
+			track.set_data([], [])
+			point.set_data([], [])
+			annotation.set_text('')
+			return line, track, point, annotation
+
+		# Animation function that updates the frame
+		def animate(i):
+			# Update line for the regression prediction
+			fit1_X = np.linspace(self.X_train[:, 1].min(), self.X_train[:, 1].max(), 1000)
+			fit1_y = self.theta_history[i][0] + self.theta_history[i][1] * fit1_X
+
+			# Update the gradient descent track
+			fit2_X = self.theta_history[:i, 0]
+			fit2_y = self.theta_history[:i, 1]
+
+			# Set updated data for the plot elements
+			track.set_data(fit2_X, fit2_y)
+			line.set_data(fit1_X, fit1_y)
+			point.set_data(self.theta_history[i, 0], self.theta_history[i, 1])
+
+			# Update annotation with the current cost
+			annotation.set_text(f'Cost = {self.cost_history[i]:.4f}')
+			return line, track, point, annotation
+
+		# Create the animation
+		anim = animation.FuncAnimation(fig, animate, init_func=init,
+									frames=len(self.cost_history), interval=50, blit=True)
+
+		# Save animation as GIF
+		anim.save('animation.gif', writer='imagemagick', fps=30)
+
+		plt.close()  # Close the plot to prevent it from displaying statically
