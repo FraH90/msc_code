@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import matplotlib.animation as animation
+import operator
 
 DEFAULT_LEARNING_RATE = 1e-2
 DEFAULT_N_STEPS = 2000
@@ -18,7 +19,7 @@ class LinearRegression:
 	and one method to produce a full prediction based on input samples (inference). 
 	This is completed by the class Evaluation in the module evaluation.py that measure performances and various indicators.
 	"""
-	def __init__(self, csv_path, config= {'learning_rate': 1e-2, 'n_steps': 2000, 'features_select': 'Size', 'y_label': 'Price', 'lmd': 1} ):
+	def __init__(self, csv_path, config= {'learning_rate': 1e-2, 'n_steps': 2000, 'features_select': 'Size', 'poly_grade': '', 'y_label': 'Price', 'lmd': 1} ):
 		"""
 		:param learning_rate: learning rate value
 		:param n_steps: number of epochs around gradient descent
@@ -48,6 +49,8 @@ class LinearRegression:
 		# SEMI-AUTOMATIC BEHAVIOR
 		# Automatically load data, perform preprocessing, etc
 		self._load_and_preprocess()
+		# Generate eventual polynomial features
+		self._polynomial_features()
 		# get m and n_features
 		self.m_samples = self.X.shape[0]
 
@@ -57,7 +60,7 @@ class LinearRegression:
 		self._normalize()
 		# add bias column
 		self._add_bias_column()
-		# update n_features after adding bias column
+		# update n_features after adding bias column (and eventual polynomial features)
 		self.n_features = self.X_train.shape[1]
 		# Generate vector lmd (that is, a vector of dimension n+1 containing all lmd, 
 		# with the exception of 0-th element which must be zero, since regularization must not be applied to 0-th element)
@@ -92,11 +95,33 @@ class LinearRegression:
 		# THIS IS ESSENTIAL IN ORDER TO OPERATE WITH THE DATA; YOU CAN'T OPERATE ON DATAFRAME AS NUMBERS
 		self.features_list = [feature.strip() for feature in self.features_select.split(',')]
 		self.X = dataset[self.features_list].values
+		# Get the initial number of features, it will updated later (we'll also add +1 to express the bias col which has still not been added)
+		self.n_features = self.X.shape[1] + 1
 		# Extract from the dataset the label y and convert it into numpy array
 		self.y = dataset[self.y_label].values
 		# Let's return the processed X, y in case you need to use it outside of the class
 		return self.X, self.y
 
+	def _polynomial_features(self):
+		'''
+		Add polynomial features, given by the poly_grade field of config dictionary. Permitted only if the initial dataset has a single feature.
+		'''
+		if self.n_features != 2:
+			print("Polynomial features can be retrieven only in case of single feature (X must be a vector, not a matrix)")
+			print("Simple multivariate regression will be performed here, without taking into account poly features")
+			return
+		# See if there are polynomial features (x^2, x^3, etc)
+		if self.config['poly_grade'] == '' or self.config['poly_grade'] == '1':
+			self.poly_grade = [1]
+			return
+		else:
+			# Obtain from poly_feature string the grades for which we need to do regression
+			polygrade_string_splitted = str(self.config['poly_grade']).split(", ")
+			self.poly_grade = [int(exp_string) for exp_string in polygrade_string_splitted]
+		# Being the input univariate, we just need to extract the single feature from the dataset and compute a new self.X matrix from x
+		x = self.X[:, 0]
+		col_stack = [x**exp for exp in self.poly_grade]
+		self.X = np.column_stack(col_stack)
 
 	def _dataset_split(self):
 		# in order to perform hold-out splitting 80/20 identify the index at 80% of the total length of the array
@@ -332,6 +357,25 @@ class LinearRegression:
 		lineX = np.linspace(self.X_train[:,1].min(), self.X_train[:,1].max(), 100)
 		liney = self.theta[0] + self.theta[1]*lineX
 		plt.plot(lineX, liney, 'b--', label='Current hypothesis')
+		# labels, title, legend
+		plt.xlabel(self.features_list[0])
+		plt.ylabel(self.y_label)
+		plt.title(f'Regression line over {self.features_list[0]}')
+		plt.legend()
+		plt.show()
+
+	def plot_regression_poly(self):
+		plt.figure(figsize=(10,6))
+		# Extract the single feature; it will be in column 1, since in col0 we have the bias
+		x = self.X_train[:, 1]
+		y_pred = self.predict(self.X_train)
+		# Scatter plot of training data points
+		plt.scatter(x, self.y_train, color='r', label='Data points')
+		# Plot the line, by generating 100 points in the range min-max of the training dataset, and computing the prediction h_theta on those points
+		sort_axis = operator.itemgetter(0)
+		sorted_zip = sorted( zip(x, y_pred), key=sort_axis )
+		x_poly, y_poly_pred = zip(*sorted_zip)
+		plt.plot(x_poly, y_poly_pred, 'b--', label='Current hypothesis')
 		# labels, title, legend
 		plt.xlabel(self.features_list[0])
 		plt.ylabel(self.y_label)
