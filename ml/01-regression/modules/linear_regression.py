@@ -289,35 +289,37 @@ class LinearRegression:
 		'''
 		cost_history_train = np.zeros(self.n_steps)
 		cost_history_valid = np.zeros(self.n_steps)
-		theta_history = np.zeros((self.n_steps, self.theta.shape[0]))
-		
+
 		# Initialize theta to a random value (uniform distribution, range 0-1)
 		theta = np.random.rand(self.n_features)
+		# Initialize theta history (zero fill)
+		theta_history = np.zeros((self.n_steps, theta.shape[0]))
 		
 		# Running through epochs
 		for step in range(0, self.n_steps):
 			cost = 0
-			h_theta_valid = np.dot(self.X_valid, self.theta)
+			h_theta_valid = np.dot(self.X_valid, theta)
 			error_valid = h_theta_valid - self.y_valid
 			# Iterate through the various batches. Here the index i is the starting point of the current batch; i+batch_size-1 is the end of the batch
 			for i in range(0, self.m_samples, batch_size):
 				# Select the portion to create a batch from X_train, by slicing from i to i+batch_size (ex from 0 to 9, then from 10 to 19, then from 20 to 29...)
 				X_i = self.X_train[i : i+batch_size]
 				y_i = self.y_train[i : i+batch_size]
-				h_theta = np.dot(X_i, self.theta)
+				h_theta = np.dot(X_i, theta)
 				error = h_theta - y_i
 				# Each one of those iteration through a single batch, is like a small batch gd; but the size is not m_samples, is batch_size, so in formula u have 1/batch_size
 				gradient = (1/batch_size) * ( np.dot(X_i.T, error) + (theta.T * self.lmd_vector) )
 				theta = theta - self.learning_rate * gradient
 				cost += 1/(2*batch_size) * np.dot(error.T, error)
 			# Here current epoch (step) has finished running, so put the results in the history lists
-			theta_history[step, :] = self.theta.T
+			theta_history[step, :] = theta.T
 			cost_history_train[step] = cost
 			cost_history_valid[step] = (1/(2*self.m_samples)) * np.dot(error_valid.T, error_valid)
 		
 		if update_internal==True:
 			self.theta = theta
 			self.cost_history = cost_history_train
+			self.theta_history = theta_history
 
 		return cost_history_train, cost_history_valid, theta_history
 
@@ -445,7 +447,7 @@ class LinearRegression:
 		# Grid over which we will calculate J
 		extension_factor = 3.2
 		theta0_maxplot = extension_factor * max( abs(self.theta_history[:, 0].min()), abs(self.theta_history[:, 0].max()) )
-		theta1_maxplot = max( abs(self.theta_history[:, 1].min()), abs(self.theta_history[:, 1].max()) )
+		theta1_maxplot = extension_factor * max( abs(self.theta_history[:, 1].min()), abs(self.theta_history[:, 1].max()) )
 		theta0_vals = np.linspace(-theta0_maxplot, theta0_maxplot, 100)
 		theta1_vals = np.linspace(-theta0_maxplot, theta0_maxplot, 100)
 
