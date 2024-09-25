@@ -9,7 +9,7 @@ DEFAULT_LEARNING_RATE = 1e-2
 DEFAULT_N_STEPS = 2000
 DEFAULT_LMD = 1
 
-np.random.seed(123)
+# np.random.seed(123)
 
 class LinearRegression:
 	"""
@@ -19,13 +19,24 @@ class LinearRegression:
 	and one method to produce a full prediction based on input samples (inference). 
 	This is completed by the class Evaluation in the module evaluation.py that measure performances and various indicators.
 	"""
-	def __init__(self, csv_path, config= {'learning_rate': 1e-2, 'n_steps': 2000, 'features_select': 'Size', 'poly_grade': '', 'y_label': 'Price', 'lmd': 1} ):
+	def __init__(self, csv_path, config=None):
 		"""
 		:param learning_rate: learning rate value
 		:param n_steps: number of epochs around gradient descent
 		:param n_features: number of features involved in regression
 		:param lmd: regularization factor (lambda)
 		"""
+
+		if config is None:
+			config = {
+				'learning_rate': 1e-2,
+				'n_steps': 2000,
+				'features_select': 'Size',
+				'poly_grade': '',
+				'y_label': 'Price',
+				'lmd': 1
+			}
+		
 		# Parameters
 		self.csv_path = csv_path
 		self.config = config
@@ -34,6 +45,7 @@ class LinearRegression:
 		self.features_select = config['features_select']
 		self.y_label = config['y_label']
 		self.lmd = config['lmd'] if 'lmd' in config else DEFAULT_LMD
+		self.poly_grade = config.get('poly_grade', '')
 
 		# Placeholders
 		self.X, self.y = None, None
@@ -43,25 +55,21 @@ class LinearRegression:
 		self.theta = None
 		self.cost_history = None
 		self.theta_history = None
-		# Those will describe the mean and stddev of each feature (column) of the dataset
-		self.mean_trainingset, self.std_trainingset  = None, None
+		self.X_mean_trainingset, self.X_std_trainingset  = None, None
+		self.y_mean_trainingset, self.y_std_trainingset = None, None
 
-		# SEMI-AUTOMATIC BEHAVIOR
-		# Automatically load data, perform preprocessing, etc
+		# SEMI-AUTOMATIC BEHAVIOR. Automatically load data, perform preprocessing, etc
 		self._load_and_preprocess()
 		# Generate eventual polynomial features
 		self._polynomial_features()
 		# get m and n_features
 		self.m_samples = self.X.shape[0]
 
-		# split dataset
 		self._dataset_split()
-		# normalize data
 		self._normalize()
-		# add bias column
 		self._add_bias_column()
-		# update n_features after adding bias column (and eventual polynomial features)
-		self.n_features = self.X_train.shape[1]
+		self.n_features = self.X_train.shape[1]			# update n_features after adding bias column (and eventual polynomial features)
+
 		# Generate vector lmd (that is, a vector of dimension n+1 containing all lmd, 
 		# with the exception of 0-th element which must be zero, since regularization must not be applied to 0-th element)
 		self.lmd_vector = np.full(self.n_features, self.lmd)
@@ -73,9 +81,8 @@ class LinearRegression:
 		it applies shuffling to the dataset, and finally returns the data as numpy arrays
 		OSS: X can be a matrix! The columns are the features, the rows the samples
 		'''
-		# read the dataset of houses prices
+		# read dataset from csv filepath
 		dataset = pd.read_csv(self.csv_path)
-
 		# shuffling all the samples to avoid group bias (the index is fixed after the shuffle by using reset_index)
 		dataset = dataset.sample(frac=1, random_state=42).reset_index(drop=True)
 
@@ -116,12 +123,11 @@ class LinearRegression:
 			return
 		else:
 			# Obtain from poly_feature string the grades for which we need to do regression
-			polygrade_string_splitted = str(self.config['poly_grade']).split(", ")
-			self.poly_grade = [int(exp_string) for exp_string in polygrade_string_splitted]
+			self.poly_grade = [int(exp.strip()) for exp in self.poly_grade.split(',')]
 		# Being the input univariate, we just need to extract the single feature from the dataset and compute a new self.X matrix from x
 		x = self.X[:, 0]
-		col_stack = [x**exp for exp in self.poly_grade]
-		self.X = np.column_stack(col_stack)
+		poly_features = [x**exp for exp in self.poly_grade]
+		self.X = np.column_stack(poly_features)
 
 	def _dataset_split(self):
 		# in order to perform hold-out splitting 80/20 identify the index at 80% of the total length of the array
@@ -156,6 +162,16 @@ class LinearRegression:
 		This function apply normalization to the feature of the datasets (train, valid, test) using z-score normalization
 		Remember that z-score normalization returns datas that have zero mean and stddev=1
 		'''
+		# z-score normalization. Achtung: mean has another shape (it's a row), but by broadcasting (implicit operation)
+		# In broadcasting the array "mean" here is replicated the same number of rows of X_train in order to let the arithmetic operation happen
+		# Apply the same normalization to validation and test sets. THIS IS IMPORTANT! OTHERWISE PERFORMANCE METRICS WILL BE WRONG!
+		# NOTICE HOW TO NORMALIZE THE FEATURES OF VALIDATION AND TEST SET WE USE THE MEAN AND STDDEV OF THE TRAINING SET
+		self.X_mean_trainingset = self.X_train.mean(axis=0)
+		self.X_std_trainingset = self.X_train.std(axis=0)
+		self.y_mean_trainingset = self.y_train.mean(axis=0)
+		self.y_std_trainingset = self.y_train.std(axis=0)
+		_normalize_features = lambda X: (X - self.X_mean_trainingset) / self.X_std_trainingset
+		_normalize_labels = lambda y: (y - self.y_mean_trainingset) / self.y_std_trainingset
 		################################################################################################################################################
 		# ACHTUNG: The normalization must be applied to all the datasets (training, valid, test), in order to have data that span on the same scale
 		# and are distributed within the same range.
@@ -170,16 +186,15 @@ class LinearRegression:
 		# This operation makes sense since each column represent a feature, so by computing the mean of all the samples we'll have a row vector, where each element in 
 		# the row represent the mean of the column of X having the same index
 		# So mean, std will be both row vectors, where each element represent the mean/std of each corresponding column of X
-		self.mean_trainingset = self.X_train.mean(axis=0)
-		self.std_trainingset = self.X_train.std(axis=0)
-		# z-score normalization. Achtung: mean has another shape (it's a row), but by broadcasting (implicit operation)
-		# In broadcasting the array "mean" here is replicated the same number of rows of X_train in order to let the arithmetic operation happen
-		self.X_train = (self.X_train - self.mean_trainingset) / self.std_trainingset
-		# Apply the same normalization to validation and test sets. THIS IS IMPORTANT! OTHERWISE PERFORMANCE METRICS WILL BE WRONG!
-		# NOTICE HOW TO NORMALIZE THE FEATURES OF VALIDATION AND TEST SET WE USE THE MEAN AND STDDEV OF THE TRAINING SET
-		self.X_valid = (self.X_valid - self.mean_trainingset) / self.std_trainingset
-		self.X_test = (self.X_test - self.mean_trainingset) / self.std_trainingset
-
+		self.X_train = _normalize_features(self.X_train)
+		self.X_valid = _normalize_features(self.X_valid)
+		self.X_test = _normalize_features(self.X_test)
+		# NORMALIZE TRAINING, VALIDATION AND TEST LABELS USING TRAINING SET LABELS' MEAN AND STD
+		"""
+		self.y_train = _normalize_labels(self.y_train)
+		self.y_valid = _normalize_labels(self.y_valid)
+		self.y_test = _normalize_labels(self.y_test)
+		"""
 
 	def _add_bias_column(self):
 		# Add bias column (of ones) to X_train, X_valid, X_test. Remember this is needed when computing h_theta(x), so theta0 is included in the summation
@@ -187,9 +202,13 @@ class LinearRegression:
 		# ACHTUNG: the bias column must be added AFTER normalization
 		# The c_ attribute of a nparray is to create a nparray as concatenation of columns,
 		# so we generate a nparray of ones of the same dimension of X_train, and then we concatenate this to the original X_train
-		self.X_train = np.c_[np.ones(self.X_train.shape[0]), self.X_train]
-		self.X_valid = np.c_[np.ones(self.X_valid.shape[0]), self.X_valid]
-		self.X_test = np.c_[np.ones(self.X_test.shape[0]), self.X_test]
+		add_bias = lambda X: np.c_[np.ones(X.shape[0]), X]
+
+		# Add it also to non-normalized version, needed in order to give directly the features (ex X_valid or X_test) as input to the predictor function
+		self.X_train = add_bias(self.X_train)
+		self.X_valid = add_bias(self.X_valid)
+		self.X_test = add_bias(self.X_test)
+
 
 	def predict(self, X):
 		"""
@@ -210,7 +229,8 @@ class LinearRegression:
 		# is multiplied element-wise (lmd_vector*theta) by the elements in lmd_vector, so we obtain that all the components squared of theta are summed up
 		# and multiplied by lmd, with the exception of the 0-th component that is excluded from this computation (since lmd_vector[0] is null)
 		# OSS: COST WILL BE HIGH IF Y IS HIGH, SINCE WE'VE NOT NORMALIZED THE LABELS Y
-		cost =   1/(2*m) * ( np.dot(error.T, error) +  np.dot(theta.T, self.lmd_vector*theta) )
+		regularization = np.dot(theta.T, self.lmd_vector * theta)
+		cost = 1/(2*m) * (np.dot(error.T, error) + regularization)
 		return cost
 
 	def fit(self, X=None, y=None, update_internal=True):
@@ -225,21 +245,20 @@ class LinearRegression:
 		:param y: training target values. If none is passed, self.y_train is used
 		:return: history of evolution of cost and theta during training steps
 		"""
-		if X is None:
+		if X is None or y is None:
 			X = self.X_train
-		if y is None:
 			y = self.y_train
-
-		# Initialize theta to a random value (uniform distribution, range 0-1)
-		theta = np.random.rand(self.n_features)
-		# cost_history, theta_history are just for plots purposes (they will be J(theta) and theta at every iteration), not needed for learning 
-		cost_history = np.zeros(self.n_steps)
-		theta_history = np.zeros((self.n_steps, self.n_features)) 
 
 		# Get the number of samples of the dataset (that is, the number of rows of the matrix X). 
 		# The first dimension of the matrix is always row, so len(X) returns number of rows!
 		# OSS: If you want to get the number of columns (that is, the number of feature), you can use len(X[0])
 		m = len(X)      
+
+		# Initialize theta to a random value (uniform distribution, range 0-1)
+		# cost_history, theta_history are just for plots purposes (they will be J(theta) and theta at every iteration), not needed for learning 
+		theta = np.random.rand(self.n_features)
+		cost_history = np.zeros(self.n_steps)
+		theta_history = np.zeros((self.n_steps, self.n_features)) 
 						
 		# Here you should generate random parameters (a random vector theta of n_features elements) in order to init the theta vector,
 		# but this has already been done in the __init__ method
@@ -257,7 +276,7 @@ class LinearRegression:
 			# ANOTHER APPROACH HERE WOULD BE FOR THE REGULARIZATION TERM BE EQUAL TO (1/m)*(THETA.T * LMD_VEC), WHERE LMD_VEC IS A VECTOR CONTAINING 
 			# ALL LAMBDA, EXCEPT THE 0-TH ELEMENT WHICH IS SET TO ZERO
 			# ACHTUNG: THE PREDICTION IS NOT MODIFIED BY THE REGULARIZATION! THIS IS ONLY TO GIVE MORE STABILITY TO THE GRADIENT DESCENT
-			gradient = (1/m) * ( np.dot(X.T, error) + (theta.T * self.lmd_vector) )
+			gradient = (1/m) * ( np.dot(X.T, error) + (self.lmd_vector * theta) )
 			# UPDATE THETA. HERE WE CAN SEE HOW ALL THE COMPONENTS OF THETA (PARAMETERS) ARE UPDATED ALL AT ONCE. SO THE "DIRECTION" OF MOVEMENT IN THE THETA SPACE
 			# COULD BE ANY DIRECTION! INSTEAD IN STOCHASTIC GD IN EACH UPDATE WE MOVE IN AN ALTERNATIVE MANNER AT FIRST ON THETA0 AXIS, THEN ON THETA1 AXIS, THEN THETA2 AXIS, ETC
 			# MOREOVER WE ARE COMPUTING THE UPDATE USING THE ENTIRE DATASET; INSTEAD IN STOCHASTIC GD EACH UPDATE IS PERFORMED BY CONSIDERING A SINGLE SAMPLE
@@ -269,7 +288,7 @@ class LinearRegression:
 			# The rest of the expression is for regularization (the expression of cost function with regularization applied is different from standard one)
 			# ALTERNATIVE: Select all the components of theta besides the 0-th using slicing, and use the scalar version of lambda, self.lmd instead of the vector:
 			# cost_history[step] = 1/(2*m) * ( np.dot(error.T, error) +  self.lmd * np.dot(theta.T[1:], theta[1:]) )
-			cost_history[step] = 1/(2*m) * ( np.dot(error.T, error) +  np.dot(theta.T, self.lmd_vector*theta) )
+			cost_history[step] = self.cost(X, y, theta)
 
 		# Update the internal parameter of the model only if update_internal==True, otherwise just return the cost_history and theta_history
 		if update_internal:
@@ -279,7 +298,7 @@ class LinearRegression:
 
 		return cost_history, theta_history
 
-	def fit_minibatch_gd(self, batch_size=10, update_internal=True):
+	def fit_minibatch_gd(self, X=None, y=None, batch_size=10, update_internal=True):
 		'''
 		Fit the training dataset (that is, generate the parameters theta) by employing a minibatch gradient descent (compromise between batch gd and stochastic gd)
 		If the size of the batch is batch_size, we can think of the minibatch gd as number_batches = m_samples/batch_size rounds of batch gd (while the scan of single samples
@@ -287,19 +306,18 @@ class LinearRegression:
 		in the current batch)
 		:return: theta_history and cost_history
 		'''
-		cost_history_train = np.zeros(self.n_steps)
-		cost_history_valid = np.zeros(self.n_steps)
+		if X is None or y is None:
+			X = self.X_train
+			y = self.y_train
 
-		# Initialize theta to a random value (uniform distribution, range 0-1)
-		theta = np.random.rand(self.n_features)
-		# Initialize theta history (zero fill)
-		theta_history = np.zeros((self.n_steps, theta.shape[0]))
+		m = len(y)
+		theta = np.random.rand(self.n_features)											# Initialize theta to a random value (uniform distribution, range 0-1)
+		cost_history_train = np.zeros(self.n_steps)
+		theta_history = np.zeros((self.n_steps, self.n_features))						# Initialize theta history (zero fill)
 		
 		# Running through epochs
 		for step in range(0, self.n_steps):
 			cost = 0
-			h_theta_valid = np.dot(self.X_valid, theta)
-			error_valid = h_theta_valid - self.y_valid
 			# Iterate through the various batches. Here the index i is the starting point of the current batch; i+batch_size-1 is the end of the batch
 			for i in range(0, self.m_samples, batch_size):
 				# Select the portion to create a batch from X_train, by slicing from i to i+batch_size (ex from 0 to 9, then from 10 to 19, then from 20 to 29...)
@@ -308,44 +326,19 @@ class LinearRegression:
 				h_theta = np.dot(X_i, theta)
 				error = h_theta - y_i
 				# Each one of those iteration through a single batch, is like a small batch gd; but the size is not m_samples, is batch_size, so in formula u have 1/batch_size
-				gradient = (1/batch_size) * ( np.dot(X_i.T, error) + (theta.T * self.lmd_vector) )
+				gradient = (1/batch_size) * ( np.dot(X_i.T, error) + (self.lmd_vector * theta) )
 				theta = theta - self.learning_rate * gradient
 				cost += 1/(2*batch_size) * np.dot(error.T, error)
 			# Here current epoch (step) has finished running, so put the results in the history lists
 			theta_history[step, :] = theta.T
 			cost_history_train[step] = cost
-			cost_history_valid[step] = (1/(2*self.m_samples)) * np.dot(error_valid.T, error_valid)
 		
 		if update_internal==True:
 			self.theta = theta
 			self.cost_history = cost_history_train
 			self.theta_history = theta_history
 
-		return cost_history_train, cost_history_valid, theta_history
-
-	def denormalize_thetas(self, theta):
-		'''
-		theta: learned parameter vector (including theta_0 for bias)
-		mean: mean values of each feature
-		std: standard deviation values of each feature
-		Returns:
-			theta_denorm: de-normalized thetas
-		'''
-		#################################################################################################################################
-		# The theta vector computed on the normalized training set, correspond to the normalized feature space (that is, if you want to compute
-		# the hypothesis on unseen data you need to use as features normalized ones!)
-		# If you wish to plot the regression line over the original, unnormalized features, you need to denormalize theta so you can apply 
-		# h_theta(x) to the original feature space
-		#################################################################################################################################
-		mean = self.mean_trainingset
-		std = self.std_trainingset
-		# Initialize the de-normalized theta vector
-		theta_denorm = np.zeros_like(theta)
-		# Update theta_1 to theta_n (features)
-		theta_denorm[1:] = theta[1:] / std
-		# Update theta_0 (intercept/bias term)
-		theta_denorm[0] = theta[0] - np.sum((theta[1:] * mean) / std)
-		return theta_denorm
+		return cost_history_train, theta_history
 
 	def plot_regression_line(self):
 		'''
@@ -353,8 +346,8 @@ class LinearRegression:
 		If other features are present, only the first feature is plotted with this method
 		'''
 		plt.figure(figsize=(10,6))
-		# Scatter plot of training data points
-		plt.scatter(self.X_train[:,1], self.y_train, color='r', label='Data points')
+		# Scatter plot of training data points. Remember that the 0-th column has the bias now, so in 1 you have the feature!
+		plt.scatter(self.X_train[:, 1], self.y_train, color='r', label='Training Data')
 		# Plot the line, by generating 100 points in the range min-max of the training dataset, and computing the prediction h_theta on those points
 		lineX = np.linspace(self.X_train[:,1].min(), self.X_train[:,1].max(), 100)
 		liney = self.theta[0] + self.theta[1]*lineX
@@ -455,10 +448,10 @@ class LinearRegression:
 		J_values = np.zeros((theta0_vals.size, theta1_vals.size))
 
 		# Fill out J_vals
-		for t1, element in enumerate(theta0_vals):
-			for t2, element2 in enumerate(theta1_vals):
-				thetaT = np.array([element, element2])
-				J_values[t1, t2] = self.cost(self.X_train, self.y_train, thetaT)
+		for i, theta0 in enumerate(theta0_vals):
+			for j, theta1 in enumerate(theta1_vals):
+				thetaT = np.array([theta0, theta1])
+				J_values[i, j] = self.cost(self.X_train, self.y_train, thetaT)
 
 		# Transpose to correct shape for contour plot
 		J_values = J_values.T 
@@ -543,10 +536,10 @@ class LinearRegression:
 		theta0_vals = np.linspace(self.theta_history[:, 0].min(), self.theta_history[:, 0].max(), 100)
 		theta1_vals = np.linspace(self.theta_history[:, 1].min(), self.theta_history[:, 1].max(), 100)
 		J_vals = np.zeros((theta0_vals.size, theta1_vals.size))
-		for t1, element in enumerate(theta0_vals):
-			for t2, element2 in enumerate(theta1_vals):
-				thetaT = np.array([element, element2])
-				J_vals[t1, t2] = self.cost(self.X_train, self.y_train, thetaT)
+		for i, theta0 in enumerate(theta0_vals):
+			for j, theta1 in enumerate(theta1_vals):
+				thetaT = np.array([theta0, theta1])
+				J_vals[i, j] = self.cost(self.X_train, self.y_train, thetaT)
 		J_vals = J_vals.T
 		A, B = np.meshgrid(theta0_vals, theta1_vals)
 		C = J_vals

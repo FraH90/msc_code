@@ -9,9 +9,9 @@ csv_file_relative_path = 'datasets\houses.csv'
 csv_file = os.path.join(os.getcwd(), csv_file_relative_path)
 
 def main():
-    config = {'learning_rate': 5e-2, 'n_steps': 2000, 'features_select': 'GrLivArea', 'poly_grade':'', 'y_label': 'SalePrice', 'lmd': 1}
+    config = {'learning_rate': 1e-2, 'n_steps': 2000, 'features_select': 'GrLivArea, YearBuilt, MSSubClass, YearRemodAdd, FullBath, GarageArea', 'poly_grade':'', 'y_label': 'SalePrice', 'lmd': 1}
     linear_regression = LinearRegression(csv_file, config)
-    linear_regression.fit()
+    linear_regression.fit_minibatch_gd()
     # Print results
     print(f"Thetas: {linear_regression.theta}")
     print(f"Final train cost/MSE (on training set) : {linear_regression.cost_history[-1]:.3f}")
@@ -30,11 +30,9 @@ def main():
     performance = evaluation.compute_performance(linear_regression.X_test, linear_regression.y_test)
     for key, value in performance.items():
         print(f"{key} = {value}")
-    
-    # Learning curves
+
     linear_regression.learning_curves()
-    # Animate
-    linear_regression.animate()
+
 
 if __name__ == "__main__":
     main()
