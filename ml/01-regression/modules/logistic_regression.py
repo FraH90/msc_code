@@ -11,7 +11,7 @@ DEFAULT_LMD = 1
 
 # np.random.seed(123)
 
-class LinearRegression:
+class LogisticRegression:
 	"""
 	:param csv_path: path of the csv file containing the data we want to fit
 	:param config: dictionary that contain the configuration of the linear regressor (hyperparameters, convergence condition, feature selection)
@@ -108,7 +108,7 @@ class LinearRegression:
 		self.y = dataset[self.y_label].values
 		# Let's return the processed X, y in case you need to use it outside of the class
 		return self.X, self.y
-
+ 
 	def _polynomial_features(self):
 		'''
 		Add polynomial features, given by the poly_grade field of config dictionary. Permitted only if the initial dataset has a single feature.
@@ -233,6 +233,14 @@ class LinearRegression:
 		cost = 1/(2*m) * (np.dot(error.T, error) + regularization)
 		return cost
 
+	def _sigmoid(self, z):
+		'''
+		compute the sigmoid of input value
+		:param z: an array-like with shape (m,) as input elements
+		:return: an array-like with shape (m,). Values are in sigmoid range 0-1
+		'''
+		return 1 / (1 + expit(-z))
+ 
 	def fit(self, X=None, y=None, update_internal=True):
 		"""
 		Apply gradient descent in full batch mode, without regularization, to training samples and return evolution
@@ -340,18 +348,9 @@ class LinearRegression:
 
 		return cost_history_train, theta_history
 
-	def fit_stochastic_gd(self, X=None, y=None, batch_size=10, update_internal=True):
-		if X is None or y is None:
-			X = self.X_train
-			y = self.y_train
-
-		m = len(y)
-		theta = np.random.rand(self.n_features)
-		cost_history_train = np.zeros(self.n_steps)
-		theta_history = np.zeros((self.n_steps, self.n_features))
-		
-
-
+	def fit_stochastic_gradientdescent(self):
+		pass
+	
 	def plot_regression_line(self):
 		'''
 		This plot the regression line, only over the first feature x1 (indexed by X[:,1] since X[:,0] is the bias column)
