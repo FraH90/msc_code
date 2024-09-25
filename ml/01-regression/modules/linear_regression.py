@@ -345,13 +345,16 @@ class LinearRegression:
 		This plot the regression line, only over the first feature x1 (indexed by X[:,1] since X[:,0] is the bias column)
 		If other features are present, only the first feature is plotted with this method
 		'''
+		denormX = lambda X: X*self.X_std_trainingset + self.X_mean_trainingset
+		
 		plt.figure(figsize=(10,6))
+		X_train_denorm = denormX(self.X_train[:, 1:])
 		# Scatter plot of training data points. Remember that the 0-th column has the bias now, so in 1 you have the feature!
-		plt.scatter(self.X_train[:, 1], self.y_train, color='r', label='Training Data')
+		plt.scatter(X_train_denorm[:, 0], self.y_train, color='r', label='Training Data')
 		# Plot the line, by generating 100 points in the range min-max of the training dataset, and computing the prediction h_theta on those points
 		lineX = np.linspace(self.X_train[:,1].min(), self.X_train[:,1].max(), 100)
 		liney = self.theta[0] + self.theta[1]*lineX
-		plt.plot(lineX, liney, 'b--', label='Current hypothesis')
+		plt.plot(denormX(lineX), liney, 'b--', label='Current hypothesis')
 		# labels, title, legend
 		plt.xlabel(self.features_list[0])
 		plt.ylabel(self.y_label)
