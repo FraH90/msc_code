@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import matplotlib.animation as animation
-import operator
+import math
 
 DEFAULT_LEARNING_RATE = 1e-2
 DEFAULT_N_STEPS = 2000
@@ -108,26 +108,6 @@ class LogisticRegression:
 		self.y = dataset[self.y_label].values
 		# Let's return the processed X, y in case you need to use it outside of the class
 		return self.X, self.y
- 
-	def _polynomial_features(self):
-		'''
-		Add polynomial features, given by the poly_grade field of config dictionary. Permitted only if the initial dataset has a single feature.
-		'''
-		if self.n_features != 2:
-			print("Polynomial features can be retrieven only in case of single feature (X must be a vector, not a matrix)")
-			print("Simple multivariate regression will be performed here, without taking into account poly features")
-			return
-		# See if there are polynomial features (x^2, x^3, etc)
-		if self.config['poly_grade'] == '' or self.config['poly_grade'] == '1':
-			self.poly_grade = [1]
-			return
-		else:
-			# Obtain from poly_feature string the grades for which we need to do regression
-			self.poly_grade = [int(exp.strip()) for exp in self.poly_grade.split(',')]
-		# Being the input univariate, we just need to extract the single feature from the dataset and compute a new self.X matrix from x
-		x = self.X[:, 0]
-		poly_features = [x**exp for exp in self.poly_grade]
-		self.X = np.column_stack(poly_features)
 
 	def _dataset_split(self):
 		# in order to perform hold-out splitting 80/20 identify the index at 80% of the total length of the array
@@ -209,7 +189,14 @@ class LogisticRegression:
 		self.X_valid = add_bias(self.X_valid)
 		self.X_test = add_bias(self.X_test)
 
-
+	def _sigmoid(self, z):
+		'''
+		compute the sigmoid of input value
+		:param z: an array-like with shape (m,) as input elements
+		:return: an array-like with shape (m,). Values are in sigmoid range 0-1
+		'''
+		return 1 / (1 + math.exp(-z))
+	
 	def predict(self, X):
 		"""
 		Perform a complete prediction about X samples (that is, it computes h_theta(X))
@@ -217,32 +204,24 @@ class LogisticRegression:
 		:param X: test sample with shape (m, n_features)
 		:return: prediction with respect to X sample. The shape of return array is (m, )
 		"""
-		return np.dot(X, self.theta)
+		return self._sigmoid(np.dot(X, self.theta))
 	
+	# For logistic regression the cost formula is different; this is also called CROSS ENTROPY FUNCTION in logistic regression
 	def cost(self, X, y, theta):
-		m = len(X)
-		h_theta = np.dot(X, theta)
-		error = h_theta - y
-		# The regularization part of the cost is the squared module of theta, multiplied by lambda, with the exception of the 0-th element
-		# which is not regularized (so this means for i=0, in the scalar equation, the regularization term is not present in the cost expression)
-		# To obtain that equivalent of the scalar equation in the vector form, we just perform dot product of theta.T and theta, but the last theta 
-		# is multiplied element-wise (lmd_vector*theta) by the elements in lmd_vector, so we obtain that all the components squared of theta are summed up
-		# and multiplied by lmd, with the exception of the 0-th component that is excluded from this computation (since lmd_vector[0] is null)
-		# OSS: COST WILL BE HIGH IF Y IS HIGH, SINCE WE'VE NOT NORMALIZED THE LABELS Y
-		regularization = np.dot(theta.T, self.lmd_vector * theta)
-		cost = 1/(2*m) * (np.dot(error.T, error) + regularization)
-		return cost
-
-	def _sigmoid(self, z):
-		'''
-		compute the sigmoid of input value
-		:param z: an array-like with shape (m,) as input elements
-		:return: an array-like with shape (m,). Values are in sigmoid range 0-1
-		'''
-		return 1 / (1 + expit(-z))
+		m = len(y)
+		h_theta = self.predict(X)
+		# Compute the two terms that are part of cross entropy function. Those two are vectors, size mx1
+		# notice we're using element-wise product now
+		term_1 = y * np.log(h_theta)
+		term_2 = (1 - y) * np.log(1 - h_theta)
+		# Final function is given by the summation of those two vectors, and then applying np.mean we get the summation of all the elements of the vectors divided by m
+		# This implements the summation in the cross entropy formula! Instead of iterating over multiple addends, we leverage the power of vectorial functions
+		loss = -np.mean(term_1 + term_2)
+		return loss
  
 	def fit(self, X=None, y=None, update_internal=True):
 		"""
+		FOR LOGISTIC REGRESSION THE GRADIENT HAS THE SAME FORMULA OF LINEAR REGRESSION, BUT 
 		Apply gradient descent in full batch mode, without regularization, to training samples and return evolution
 		history of train and validation cost
 		OSS: This method updates the internal parameter of the model only if it's called without X,y parameters (so that it acts
@@ -276,7 +255,7 @@ class LogisticRegression:
 			# With a simple matrix product we'll get the predictons for all the samples (so for m sets of n features)
 			# OSS: EVERY ITERATION OF THIS LOOP WILL BE AN EPOCH. SO THIS TRAINING IS CONSTITUTED OF self.n_steps EPOCHS.
 			# NOTICE HOW BATCH GD USES THE ENTIRE DATASET, AT THE SAME TIME, TO COMPUTE THE PARAMETERS THETA, AND THE PARAMETERS ARE UPDATED ALL AT ONCE
-			h_theta = np.dot(X, theta)
+			h_theta = self.predict(X)	# The prediction in logistic regression has a different meaning: it gives the probability that the i-th sample belong to class 1 
 			# Compute the errors (prediction - dataset label value). This will be a vector, for all the samples
 			# NOTICE HOW VECTOR OPERATIONS LET YOU DO EVERYTHING REAL QUICK! NO NEED TO WRITE LOOPS HERE TO CYCLE ALL THE SAMPLES!
 			error = h_theta - y
@@ -284,7 +263,8 @@ class LogisticRegression:
 			# ANOTHER APPROACH HERE WOULD BE FOR THE REGULARIZATION TERM BE EQUAL TO (1/m)*(THETA.T * LMD_VEC), WHERE LMD_VEC IS A VECTOR CONTAINING 
 			# ALL LAMBDA, EXCEPT THE 0-TH ELEMENT WHICH IS SET TO ZERO
 			# ACHTUNG: THE PREDICTION IS NOT MODIFIED BY THE REGULARIZATION! THIS IS ONLY TO GIVE MORE STABILITY TO THE GRADIENT DESCENT
-			gradient = (1/m) * ( np.dot(X.T, error) + (self.lmd_vector * theta) )
+			regularization = self.lmd_vector * theta
+			gradient = (1/m) * ( np.dot(X.T, error) + regularization )
 			# UPDATE THETA. HERE WE CAN SEE HOW ALL THE COMPONENTS OF THETA (PARAMETERS) ARE UPDATED ALL AT ONCE. SO THE "DIRECTION" OF MOVEMENT IN THE THETA SPACE
 			# COULD BE ANY DIRECTION! INSTEAD IN STOCHASTIC GD IN EACH UPDATE WE MOVE IN AN ALTERNATIVE MANNER AT FIRST ON THETA0 AXIS, THEN ON THETA1 AXIS, THEN THETA2 AXIS, ETC
 			# MOREOVER WE ARE COMPUTING THE UPDATE USING THE ENTIRE DATASET; INSTEAD IN STOCHASTIC GD EACH UPDATE IS PERFORMED BY CONSIDERING A SINGLE SAMPLE
@@ -351,47 +331,6 @@ class LogisticRegression:
 	def fit_stochastic_gradientdescent(self):
 		pass
 	
-	def plot_regression_line(self):
-		'''
-		This plot the regression line, only over the first feature x1 (indexed by X[:,1] since X[:,0] is the bias column)
-		If other features are present, only the first feature is plotted with this method
-		'''
-		denormX = lambda X: X*self.X_std_trainingset + self.X_mean_trainingset
-		
-		plt.figure(figsize=(10,6))
-		X_train_denorm = denormX(self.X_train[:, 1:])
-		# Scatter plot of training data points. Remember that the 0-th column has the bias now, so in 1 you have the feature!
-		plt.scatter(X_train_denorm[:, 0], self.y_train, color='r', label='Training Data')
-		# Plot the line, by generating 100 points in the range min-max of the training dataset, and computing the prediction h_theta on those points
-		lineX = np.linspace(self.X_train[:,1].min(), self.X_train[:,1].max(), 100)
-		liney = self.theta[0] + self.theta[1]*lineX
-		plt.plot(denormX(lineX), liney, 'b--', label='Current hypothesis')
-		# labels, title, legend
-		plt.xlabel(self.features_list[0])
-		plt.ylabel(self.y_label)
-		plt.title(f'Regression line over {self.features_list[0]}')
-		plt.legend()
-		plt.show()
-
-	def plot_regression_poly(self):
-		plt.figure(figsize=(10,6))
-		# Extract the single feature; it will be in column 1, since in col0 we have the bias
-		x = self.X_train[:, 1]
-		y_pred = self.predict(self.X_train)
-		# Scatter plot of training data points
-		plt.scatter(x, self.y_train, color='r', label='Data points')
-		# Plot the line, by generating 100 points in the range min-max of the training dataset, and computing the prediction h_theta on those points
-		sort_axis = operator.itemgetter(0)
-		sorted_zip = sorted( zip(x, y_pred), key=sort_axis )
-		x_poly, y_poly_pred = zip(*sorted_zip)
-		plt.plot(x_poly, y_poly_pred, 'b--', label='Current hypothesis')
-		# labels, title, legend
-		plt.xlabel(self.features_list[0])
-		plt.ylabel(self.y_label)
-		plt.title(f'Regression line over {self.features_list[0]}')
-		plt.legend()
-		plt.show()
-
 	def plot_cost_training_history(self):
 		plt.figure(figsize=(10, 6))
 		# Plot cost history
@@ -524,7 +463,6 @@ class LogisticRegression:
 		plt.title('Learning curves')
 		ax.legend()
 		plt.show()
-
 
 	def animate(self):
 		# Prepare the figure and subplots
