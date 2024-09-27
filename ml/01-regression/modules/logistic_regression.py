@@ -32,8 +32,7 @@ class LogisticRegression:
 				'learning_rate': 1e-2,
 				'n_steps': 2000,
 				'features_select': 'Size',
-				'poly_grade': '',
-				'y_label': 'Price',
+				'class': 'Price',
 				'lmd': 1
 			}
 		
@@ -43,9 +42,8 @@ class LogisticRegression:
 		self.learning_rate = config['learning_rate'] if config['learning_rate'] != '' else DEFAULT_LEARNING_RATE
 		self.n_steps = int(config['n_steps']) if config['n_steps'] != '' else DEFAULT_N_STEPS
 		self.features_select = config['features_select']
-		self.y_label = config['y_label']
+		self.y_label = config['class']
 		self.lmd = config['lmd'] if 'lmd' in config else DEFAULT_LMD
-		self.poly_grade = config.get('poly_grade', '')
 
 		# Placeholders
 		self.X, self.y = None, None
@@ -151,7 +149,6 @@ class LogisticRegression:
 		self.y_mean_trainingset = self.y_train.mean(axis=0)
 		self.y_std_trainingset = self.y_train.std(axis=0)
 		_normalize_features = lambda X: (X - self.X_mean_trainingset) / self.X_std_trainingset
-		_normalize_labels = lambda y: (y - self.y_mean_trainingset) / self.y_std_trainingset
 		################################################################################################################################################
 		# ACHTUNG: The normalization must be applied to all the datasets (training, valid, test), in order to have data that span on the same scale
 		# and are distributed within the same range.
@@ -197,7 +194,7 @@ class LogisticRegression:
 		'''
 		return 1 / (1 + math.exp(-z))
 	
-	def predict(self, X):
+	def _predict_prob(self, X):
 		"""
 		Perform a complete prediction about X samples (that is, it computes h_theta(X))
 		OSS: The prediction expression doesn't change if we compute thetas with or without regularization
@@ -206,10 +203,21 @@ class LogisticRegression:
 		"""
 		return self._sigmoid(np.dot(X, self.theta))
 	
+	def predict(self, X, threshold=0.5):
+		"""
+		Perform a complete prediction about the X samples
+		:param X: test sample with shape (m, n_features)
+		:param threshold: threshold value to disambiguate positive or negative sample
+		:return: prediction wrt X sample. The shape of return array is (m,)
+		"""
+		# Xpred =  np.c_[np.ones(X.shape[0]), X]
+		Xpred = X
+		return self._predict_prob(Xpred) >= threshold				# For example if the probability is 0.9, 0.9>=0.5(threshold) -> prediction=True
+
 	# For logistic regression the cost formula is different; this is also called CROSS ENTROPY FUNCTION in logistic regression
 	def cost(self, X, y, theta):
 		m = len(y)
-		h_theta = self.predict(X)
+		h_theta = self._predict_prob(X)
 		# Compute the two terms that are part of cross entropy function. Those two are vectors, size mx1
 		# notice we're using element-wise product now
 		term_1 = y * np.log(h_theta)

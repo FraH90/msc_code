@@ -357,7 +357,7 @@ class LinearRegression:
 		This plot the regression line, only over the first feature x1 (indexed by X[:,1] since X[:,0] is the bias column)
 		If other features are present, only the first feature is plotted with this method
 		'''
-		denormX = lambda X: X*self.X_std_trainingset + self.X_mean_trainingset
+		denormX = lambda X: X*self.X_std_trainingset[0] + self.X_mean_trainingset[0]
 		
 		plt.figure(figsize=(10,6))
 		X_train_denorm = denormX(self.X_train[:, 1:])

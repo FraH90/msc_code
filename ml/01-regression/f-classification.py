@@ -9,7 +9,7 @@ csv_file_relative_path = 'datasets\houses.csv'
 csv_file = os.path.join(os.getcwd(), csv_file_relative_path)
 
 def main():
-    config = {'learning_rate': 5e-2, 'n_steps': 2000, 'features_select': 'GrLivArea', 'poly_grade':'', 'y_label': 'SalePrice', 'lmd': 1}
+    config = {'learning_rate': 1e-2, 'n_steps': 2000, 'features_select': 'GrLivArea, YearBuilt, MSSubClass, YearRemodAdd, FullBath, GarageArea', 'poly_grade':'', 'y_label': 'SalePrice', 'lmd': 1}
     linear_regression = LinearRegression(csv_file, config)
     linear_regression.fit_minibatch_gd()
     # Print results
@@ -32,6 +32,7 @@ def main():
         print(f"{key} = {value}")
 
     linear_regression.learning_curves()
+
 
 if __name__ == "__main__":
     main()
